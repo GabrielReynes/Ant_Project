@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9d9942621d0948cfbdca0bda827406c9, type: 3}
+  m_Name: SimulationSettings
+  m_EditorClassIdentifier: 
+  width: 960
+  height: 540
+  numAgents: 20000
+  decayRate: 0.315
+  blurRate: 0.391
+  mouseEffectRadius: 100
+  agentInitialisation: 0
+  specieSettings:
+  - speed: 100
+    senseSpread: 5
+    senseLength: 10
+    rotationSpeed: 10
+    color: {r: 0.07843137, g: 0.49243367, b: 0.5568628, a: 1}
+  - speed: 100
+    senseSpread: 5
+    senseLength: 10
+    rotationSpeed: 10
+    color: {r: 0.6509434, g: 0.39653152, b: 0.60165805, a: 1}

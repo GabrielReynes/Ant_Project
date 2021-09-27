@@ -1,0 +1,159 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+struct Agent
+{
+    float2 position;
+    float angle;
+    int specie_index;
+};
+
+struct SpecieSetting
+{
+    int speed;
+    int sense_spread;
+    int sense_length;
+    float rotation_speed;
+    float4 color;
+};
+
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float4> Result;
+
+uint num_agent;
+RWStructuredBuffer<Agent> agents;
+StructuredBuffer<SpecieSetting> species_settings;
+
+bool mouse_effect_activated = false;
+float mouse_pos_x, mouse_pos_y;
+int mouse_effect_radius;
+
+//Constant settings
+int width, height;
+
+//Frame updated settings
+float time, delta_time;
+
+static const float PI = 3.14159265f;
+
+// Hash function www.cs.ubc.ca/~rbridson/docs/schechter-sca08-turbulence.pdf
+uint hash(uint state)
+{
+    state ^= 2747636419u;
+    state *= 2654435769u;
+    state ^= state >> 16;
+    state *= 2654435769u;
+    state ^= state >> 16;
+    state *= 2654435769u;
+    return state;
+}
+
+float scale_to_range01(const uint state)
+{
+    return state / 4294967295.0; //--Largest output of "hash" method
+}
+
+float sense_sum(float2 pos, float2 direction, int sense_length, float4 color)
+{
+    float sum = 0;
+
+    float2 center_point = pos + direction * sense_length;
+    const int center_x = (int) center_point.x;
+    const int center_y = (int) center_point.y;
+    const int square_length = 5;
+    
+    for (int x = max(-square_length, -center_point.x); x < square_length; x++)
+    {
+        int sample_x = center_x + x;
+        if (sample_x >= width) break;
+        for (int y = max(-square_length, -center_point.y); y < square_length; y++)
+        {
+            int sample_y = center_y + y;
+            if (sample_y >= height) break;
+            sum += dot(Result[int2(sample_x, sample_y)].xyz, color.xyz * 2 -1);
+        }
+    }
+    return sum;
+}
+
+float2 angle_to_dir(float angle)
+{
+    return float2(cos(angle), sin(angle));
+}
+
+bool near_mouse(float2 pos, float2 mouse_pos)
+{
+    const float d_x = pos.x - mouse_pos.x;
+    const float d_y = pos.y - mouse_pos.y;
+    return d_x * d_x + d_y * d_y  < mouse_effect_radius*mouse_effect_radius;
+}
+
+[numthreads(1024,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= num_agent) return;
+
+    const Agent agent = agents[id.x];
+    float2 pos = agent.position;
+
+    const SpecieSetting settings = species_settings[agent.specie_index];
+    const float sense_spread = settings.sense_spread * PI / 180.0;
+    const int sense_length = settings.sense_length;
+    const float4 color = settings.color;
+    
+    uint random = hash(pos.y * width + pos.x + hash(id.x + time * 100000));
+
+    const float2 mouse_pos = float2(mouse_pos_x, mouse_pos_y);
+    if (mouse_effect_activated && near_mouse(pos, mouse_pos))
+    {
+        float2 relative_position = pos - mouse_pos;
+        const float new_angle = atan2(relative_position.y, relative_position.x);
+        agents[id.x].angle = new_angle;
+    }
+    else
+    {
+        const float left_sense = sense_sum(pos, angle_to_dir(agent.angle + sense_spread), sense_length, color);
+        const float straight_sense = sense_sum(pos, angle_to_dir(agent.angle), sense_length, color);
+        const float right_sense = sense_sum(pos, angle_to_dir(agent.angle - sense_spread), sense_length, color);
+    
+        const float random_steer_strength = scale_to_range01(random);
+
+        const float rotation_speed = settings.rotation_speed;
+    
+        if (straight_sense > left_sense && straight_sense > right_sense) {
+            //agents[id.x].angle += 0;
+        }
+        else if (straight_sense < left_sense && straight_sense < right_sense)
+        {
+            agents[id.x].angle += (random_steer_strength - 0.5) * 2 * rotation_speed * delta_time;
+        }
+        // Turn right
+        else if (right_sense > left_sense) {
+            agents[id.x].angle -= random_steer_strength * rotation_speed * delta_time;
+        }
+        // Turn left
+        else if (left_sense > right_sense) {
+            agents[id.x].angle += random_steer_strength * rotation_speed * delta_time;
+        }
+    }
+
+    const float2 direction = angle_to_dir(agent.angle);
+    
+    float2 new_pos = agent.position + direction * delta_time * settings.speed;
+    
+    // Clamp position to map boundaries, and pick new random move dir if hit boundary
+    if (new_pos.x < 0 || new_pos.x >= width || new_pos.y < 0 || new_pos.y >= height) {
+        random = hash(random);
+        const float random_angle = scale_to_range01(random) * 2 * 3.1415;
+
+        new_pos.x = min(width-1,max(0, new_pos.x));
+        new_pos.y = min(height-1,max(0, new_pos.y));
+        agents[id.x].angle = random_angle;
+    }
+
+    Result[new_pos.xy] = color;
+    agents[id.x].position = new_pos;
+}
+
